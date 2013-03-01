@@ -13,6 +13,7 @@ from werkzeug.urls import url_unquote
 from werkzeug.exceptions import NotFound
 
 def saver(processor):
+    """Fetched content sink, provides crawled data to `processor`"""
     ctx = zmq.Context()
     puller = ctx.socket(zmq.PULL)
     puller.bind('tcp://*:5051')
@@ -39,6 +40,9 @@ def load_status(path):
     return set(history), set(front)
 
 def worker(domain, save_rules):
+    """Worker process, fetches url from the front,
+       crawl, push new urls to front
+       and pushes content to sink if matched on a rule"""
     ctx = zmq.Context()
     worker_ = ctx.socket(zmq.REQ)
     worker_.connect('tcp://localhost:5050')
@@ -79,7 +83,7 @@ def worker(domain, save_rules):
 
         for link in fromstring(html).cssselect("a[href]"):
             link = link.attrib['href'].split('#')[0]
-            if link.startswith('file://'): continue
+            if link.startswith('file://') or link.startswith('javascript:'): continue
 
             if not link.startswith('http'):
                 fetched.add(link)
@@ -91,6 +95,7 @@ def worker(domain, save_rules):
 
 def fetch(domain, seed, save_rules, processor,
           crawlers = 4, status_path = None):
+    """Main entry point for the crawler"""
     ctx = zmq.Context()
     dealer = ctx.socket(zmq.REP)
     dealer.bind("tcp://*:5050")
@@ -114,7 +119,7 @@ def fetch(domain, seed, save_rules, processor,
     while True:
         if len(front) == 0: # update front
             poll_timeout = 30000
-            while True: # poll urlsing for new urls
+            while True: # poll urlsink for new urls
                 polled = urlsink.poll(timeout = poll_timeout)
                 if polled == 0:
                     break # no urls
@@ -128,7 +133,8 @@ def fetch(domain, seed, save_rules, processor,
                 save_status(history, front, status_path)
 
         else:
-            # next url to crawl
+            #print len(history), len(front) + len(history)
+            #next url to crawl
             url = front.pop()
             history.add(url)
 
